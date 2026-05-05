@@ -1,7 +1,8 @@
 import os
 import logging
 import asyncio
-import pandas as pd
+from openpyxl import load_workbook
+import xlrd
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     Application, CommandHandler, MessageHandler,
@@ -279,17 +280,34 @@ async def send_long_message(update, text):
 
 def extract_excel_content(file_bytes: bytes, filename: str) -> str:
     """Извлекает содержимое Excel файла в текстовый формат."""
+    name = filename.lower()
+    result = []
     try:
-        xl = pd.ExcelFile(io.BytesIO(file_bytes))
-        result = []
-        for sheet_name in xl.sheet_names:
-            df = pd.read_excel(io.BytesIO(file_bytes), sheet_name=sheet_name, header=None)
-            df = df.dropna(how='all').dropna(axis=1, how='all')
-            if df.empty:
-                continue
-            result.append(f"=== Вкладка: {sheet_name} ===")
-            result.append(df.to_string(index=False, header=False, na_rep=''))
-        return '\n\n'.join(result) if result else ''
+        if name.endswith('.xls'):
+            wb = xlrd.open_workbook(file_contents=file_bytes)
+            for sheet in wb.sheets():
+                rows = []
+                for rx in range(sheet.nrows):
+                    row = [str(sheet.cell_value(rx, cx)) for cx in range(sheet.ncols)]
+                    if any(v.strip() for v in row):
+                        rows.append("\t".join(row))
+                if rows:
+                    result.append(f"=== Вкладка: {sheet.name} ===")
+                    result.append("\n".join(rows))
+        else:
+            wb = load_workbook(io.BytesIO(file_bytes), read_only=True, data_only=True)
+            for sheet_name in wb.sheetnames:
+                ws = wb[sheet_name]
+                rows = []
+                for row in ws.iter_rows(values_only=True):
+                    cells = [str(c) if c is not None else "" for c in row]
+                    if any(c.strip() for c in cells):
+                        rows.append("\t".join(cells))
+                if rows:
+                    result.append(f"=== Вкладка: {sheet_name} ===")
+                    result.append("\n".join(rows))
+            wb.close()
+        return "\n\n".join(result) if result else ""
     except Exception as e:
         raise ValueError(f"Не удалось прочитать Excel файл: {e}")
 
