@@ -398,7 +398,7 @@ async def extract_text_from_file(file_bytes: bytes, filename: str) -> str:
 async def analyze_brief(brief_text: str, project_type: str) -> str:
     system = SYSTEM_PROMPT_TENDER if project_type == 'Тендер' else SYSTEM_PROMPT_PROJECT
     response = anthropic_client.messages.create(
-        model="claude-sonnet-4-5",
+        model="claude-haiku-4-5-20251001",
         max_tokens=2000,
         system=system,
         messages=[{"role": "user", "content": f"Бриф клиента:\n\n{brief_text}"}]
@@ -407,7 +407,7 @@ async def analyze_brief(brief_text: str, project_type: str) -> str:
 
 async def analyze_mediaplan(mp_text: str) -> str:
     response = anthropic_client.messages.create(
-        model="claude-sonnet-4-5",
+        model="claude-haiku-4-5-20251001",
         max_tokens=3000,
         system=SYSTEM_PROMPT_AUDIT,
         messages=[{"role": "user", "content": f"Медиаплан для аудита:\n\n{mp_text[:15000]}"}]
