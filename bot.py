@@ -151,7 +151,7 @@ async def extract_text_from_file(file_bytes: bytes, filename: str) -> str:
 
 async def analyze_brief(brief_text: str, project_type: str) -> str:
     response = anthropic_client.messages.create(
-        model="claude-sonnet-4-20250514",
+        model="claude-sonnet-4-5",
         max_tokens=2000,
         system=SYSTEM_PROMPT,
         messages=[{"role": "user", "content": f"Тип проекта: {project_type}\n\nБриф клиента:\n\n{brief_text}"}]
