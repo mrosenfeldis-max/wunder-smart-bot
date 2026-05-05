@@ -1,5 +1,6 @@
 import os
 import logging
+import asyncio
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     Application, CommandHandler, MessageHandler,
@@ -34,7 +35,7 @@ SYSTEM_PROMPT = """Ты — старший стратег digital-агентст
 - ⚠️ Риск — информация частичная или вызывает вопросы
 - ❌ Отсутствует — информации нет
 
-Формат ответа — строго следующий (используй эти эмодзи и заголовки):
+Формат ответа — строго следующий:
 
 *ДЕ-БРИФ — WUNDER DIGITAL*
 
@@ -80,7 +81,6 @@ _Открыто:_ [...]
 
 Используй Markdown (*, _, —). Будь конкретным и лаконичным."""
 
-# User states
 user_states = {}
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -110,16 +110,13 @@ async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def debrief_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
-    keyboard = [
-        [
-            InlineKeyboardButton("📋 Проект", callback_data="type_project"),
-            InlineKeyboardButton("🏆 Тендер", callback_data="type_tender"),
-        ]
-    ]
-    reply_markup = InlineKeyboardMarkup(keyboard)
+    keyboard = [[
+        InlineKeyboardButton("📋 Проект", callback_data="type_project"),
+        InlineKeyboardButton("🏆 Тендер", callback_data="type_tender"),
+    ]]
     await update.message.reply_text(
         "*Де-бриф запущен.*\n\nВыбери тип проекта:",
-        reply_markup=reply_markup,
+        reply_markup=InlineKeyboardMarkup(keyboard),
         parse_mode='Markdown'
     )
     user_states[user_id] = {'step': 'choose_type'}
@@ -128,13 +125,11 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     user_id = query.from_user.id
-
     if query.data in ('type_project', 'type_tender'):
         project_type = 'Проект' if query.data == 'type_project' else 'Тендер'
         user_states[user_id] = {'step': 'waiting_brief', 'type': project_type}
         await query.edit_message_text(
-            f"*Тип:* {project_type}\n\n"
-            "Теперь отправь бриф — текстом или файлом (PDF, DOCX, TXT).",
+            f"*Тип:* {project_type}\n\nТеперь отправь бриф — текстом или файлом (PDF, DOCX, TXT).",
             parse_mode='Markdown'
         )
 
@@ -159,98 +154,65 @@ async def analyze_brief(brief_text: str, project_type: str) -> str:
         model="claude-sonnet-4-20250514",
         max_tokens=2000,
         system=SYSTEM_PROMPT,
-        messages=[{
-            "role": "user",
-            "content": f"Тип проекта: {project_type}\n\nБриф клиента:\n\n{brief_text}"
-        }]
+        messages=[{"role": "user", "content": f"Тип проекта: {project_type}\n\nБриф клиента:\n\n{brief_text}"}]
     )
     return response.content[0].text
 
 async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     state = user_states.get(user_id, {})
-
     if state.get('step') != 'waiting_brief':
-        await update.message.reply_text(
-            "Напиши /debrief чтобы начать анализ брифа."
-        )
+        await update.message.reply_text("Напиши /debrief чтобы начать анализ брифа.")
         return
-
     brief_text = update.message.text
     if len(brief_text) < 50:
-        await update.message.reply_text(
-            "⚠️ Текст слишком короткий. Отправь полный текст брифа."
-        )
+        await update.message.reply_text("⚠️ Текст слишком короткий. Отправь полный текст брифа.")
         return
-
     project_type = state.get('type', 'Проект')
-    thinking_msg = await update.message.reply_text(
-        "⏳ Анализирую бриф по 7 блокам..."
-    )
-
+    thinking_msg = await update.message.reply_text("⏳ Анализирую бриф по 7 блокам...")
     try:
         result = await analyze_brief(brief_text, project_type)
         await thinking_msg.delete()
         await update.message.reply_text(result, parse_mode='Markdown')
         user_states.pop(user_id, None)
     except Exception as e:
-        logger.error(f"Error analyzing brief: {e}")
-        await thinking_msg.edit_text(
-            "❌ Ошибка при анализе. Попробуй снова — /debrief"
-        )
+        logger.error(f"Error: {e}")
+        await thinking_msg.edit_text("❌ Ошибка при анализе. Попробуй снова — /debrief")
 
 async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     state = user_states.get(user_id, {})
-
     if state.get('step') != 'waiting_brief':
-        await update.message.reply_text(
-            "Напиши /debrief чтобы начать анализ брифа."
-        )
+        await update.message.reply_text("Напиши /debrief чтобы начать анализ брифа.")
         return
-
     doc = update.message.document
     filename = doc.file_name or ''
     name = filename.lower()
-
     if not any(name.endswith(ext) for ext in ['.pdf', '.docx', '.doc', '.txt']):
-        await update.message.reply_text(
-            "⚠️ Формат не поддерживается. Отправь PDF, DOCX или TXT."
-        )
+        await update.message.reply_text("⚠️ Формат не поддерживается. Отправь PDF, DOCX или TXT.")
         return
-
     if doc.file_size > 10 * 1024 * 1024:
         await update.message.reply_text("⚠️ Файл слишком большой. Максимум 10 МБ.")
         return
-
-    thinking_msg = await update.message.reply_text(
-        f"📄 Читаю файл *{filename}*...", parse_mode='Markdown'
-    )
-
+    thinking_msg = await update.message.reply_text(f"📄 Читаю файл *{filename}*...", parse_mode='Markdown')
     try:
         file = await context.bot.get_file(doc.file_id)
         file_bytes = await file.download_as_bytearray()
         brief_text = await extract_text_from_file(bytes(file_bytes), filename)
-
         if not brief_text.strip():
             await thinking_msg.edit_text("❌ Не удалось извлечь текст из файла.")
             return
-
         project_type = state.get('type', 'Проект')
         await thinking_msg.edit_text("⏳ Анализирую бриф по 7 блокам...")
-
         result = await analyze_brief(brief_text, project_type)
         await thinking_msg.delete()
         await update.message.reply_text(result, parse_mode='Markdown')
         user_states.pop(user_id, None)
-
     except Exception as e:
-        logger.error(f"Error processing file: {e}")
-        await thinking_msg.edit_text(
-            "❌ Ошибка при обработке файла. Попробуй снова — /debrief"
-        )
+        logger.error(f"Error: {e}")
+        await thinking_msg.edit_text("❌ Ошибка при обработке файла. Попробуй снова — /debrief")
 
-def main():
+async def main():
     app = Application.builder().token(TELEGRAM_TOKEN).build()
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("help", help_cmd))
@@ -259,7 +221,10 @@ def main():
     app.add_handler(MessageHandler(filters.Document.ALL, handle_document))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
     logger.info("Bot started")
-    app.run_polling(drop_pending_updates=True)
+    async with app:
+        await app.start()
+        await app.updater.start_polling(drop_pending_updates=True)
+        await asyncio.Event().wait()
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())
