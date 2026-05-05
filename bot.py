@@ -410,7 +410,7 @@ async def analyze_mediaplan(mp_text: str) -> str:
         model="claude-haiku-4-5-20251001",
         max_tokens=6000,
         system=SYSTEM_PROMPT_AUDIT,
-        messages=[{"role": "user", "content": f"Медиаплан для аудита:\n\n{mp_text[:15000]}"}]
+        messages=[{"role": "user", "content": f"Медиаплан для аудита:\n\n{mp_text[:30000]}"}]
     )
     return response.content[0].text
 
@@ -452,8 +452,8 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
     filename = doc.file_name or ''
     name = filename.lower()
 
-    if doc.file_size > 10 * 1024 * 1024:
-        await update.message.reply_text("⚠️ Файл слишком большой. Максимум 10 МБ.")
+    if doc.file_size > 20 * 1024 * 1024:
+        await update.message.reply_text("⚠️ Файл слишком большой. Максимум 20 МБ.")
         return
 
     # Аудит медиаплана
